@@ -3,148 +3,245 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<meta name="theme-color" content="#0b1410">
+<meta name="theme-color" content="#f3f7fc">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>Player Radar</title>
 <style>
-  :root { --bg:#0b1410; --panel:#12201a; --line:#1f3a2c; --green:#3dff8a; --dim:#7fae96; --warn:#ff5d5d; }
-  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  html,body { margin:0; height:100%; background:var(--bg); color:#d8ffe8; font:14px system-ui,sans-serif; overflow:hidden; }
-  #app { display:flex; flex-direction:column; height:100%; padding-top:env(safe-area-inset-top); padding-bottom:env(safe-area-inset-bottom); }
-  header { display:flex; align-items:center; gap:8px; padding:8px 12px; background:var(--panel); border-bottom:1px solid var(--line); }
-  header h1 { font-size:15px; margin:0; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .dot { width:10px; height:10px; border-radius:50%; background:var(--warn); }
-  .dot.on { background:var(--green); box-shadow:0 0 8px var(--green); }
-  select, button { background:#0e1a14; color:#d8ffe8; border:1px solid var(--line); border-radius:8px; padding:6px 8px; font-size:13px; }
-  #stage { position:relative; flex:1; min-height:0; }
-  canvas { position:absolute; inset:0; width:100%; height:100%; touch-action:none; }
-  #hud { position:absolute; left:8px; bottom:8px; font-size:12px; color:var(--dim); background:#0b1410cc; padding:4px 8px; border-radius:6px; pointer-events:none; }
-  #zoomBtns { position:absolute; right:8px; bottom:8px; display:flex; flex-direction:column; gap:6px; }
-  #zoomBtns button { width:40px; height:40px; font-size:20px; }
-  #list { max-height:34%; overflow:auto; background:var(--panel); border-top:1px solid var(--line); }
-  .row { display:flex; justify-content:space-between; gap:8px; padding:9px 12px; border-bottom:1px solid var(--line); }
-  .row.sel { background:#1a3326; }
-  .row .n { font-weight:600; }
-  .row .c { font-family:ui-monospace,monospace; color:var(--dim); }
-  .empty { padding:14px; color:var(--dim); text-align:center; }
+  :root {
+    --bg: #f3f7fc;
+    --card: #ffffff;
+    --ink: #17314d;
+    --muted: #6b84a0;
+    --line: #dce7f5;
+    --blue: #2f6fd6;
+    --blue-soft: #e6effc;
+    --live: #1aa37a;
+    --off: #aab9cc;
+    --shadow: 0 6px 24px rgba(31, 78, 140, .12);
+    --sans: ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+    --num: ui-monospace, "SF Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 15px/1.35 var(--sans); overflow: hidden; }
+  #app { position: relative; height: 100%; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+
+  /* map fills the whole screen */
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
+
+  /* top bar */
+  #top { position: absolute; z-index: 5; left: 12px; right: 12px; top: calc(12px + env(safe-area-inset-top)); display: flex; flex-direction: column; gap: 8px; max-width: 460px; }
+  .bar { display: flex; align-items: center; gap: 10px; background: var(--card); border-radius: 16px; padding: 10px 14px; box-shadow: var(--shadow); }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--off); flex: none; }
+  .dot.on { background: var(--live); box-shadow: 0 0 0 4px rgba(26,163,122,.18); }
+  #title { font-weight: 700; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #age { color: var(--muted); font-size: 13px; }
+
+  /* dropdown */
+  #dd { position: relative; }
+  #ddBtn { width: 100%; display: flex; align-items: center; gap: 10px; border: 0; background: var(--card); color: var(--ink); font: inherit; font-weight: 600; padding: 13px 14px; border-radius: 16px; box-shadow: var(--shadow); cursor: pointer; text-align: left; }
+  #ddBtn .count { background: var(--blue-soft); color: var(--blue); border-radius: 999px; padding: 1px 9px; font-size: 13px; }
+  #ddBtn .sp { flex: 1; }
+  #ddBtn svg { transition: transform .18s ease; }
+  #dd.open #ddBtn svg { transform: rotate(180deg); }
+  #ddBtn:focus-visible, .row:focus-visible, .chip:focus-visible, .fab:focus-visible { outline: 3px solid rgba(47,111,214,.45); outline-offset: 2px; }
+  #panel { display: none; position: absolute; left: 0; right: 0; top: calc(100% + 8px); background: var(--card); border-radius: 16px; box-shadow: var(--shadow); max-height: min(52vh, 420px); overflow: auto; padding: 6px; }
+  #dd.open #panel { display: block; }
+  .row { width: 100%; display: flex; align-items: center; gap: 12px; padding: 10px; border: 0; background: none; color: inherit; font: inherit; text-align: left; border-radius: 12px; cursor: pointer; }
+  .row:hover, .row.sel { background: var(--blue-soft); }
+  .av { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-weight: 700; flex: none; }
+  .who { flex: 1; min-width: 0; }
+  .who b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .who span { font-family: var(--num); font-size: 13px; color: var(--muted); }
+  .far { font-size: 13px; color: var(--muted); white-space: nowrap; }
+  .empty { padding: 18px 14px; color: var(--muted); }
+  .empty b { color: var(--ink); display: block; margin-bottom: 4px; }
+
+  /* dimension chips */
+  #chips { display: none; gap: 6px; flex-wrap: wrap; }
+  #chips.show { display: flex; }
+  .chip { border: 0; background: var(--card); color: var(--muted); font: inherit; font-size: 13px; font-weight: 600; padding: 7px 13px; border-radius: 999px; box-shadow: 0 2px 10px rgba(31,78,140,.1); cursor: pointer; }
+  .chip.on { background: var(--blue); color: #fff; }
+
+  /* map controls */
+  #ctl { position: absolute; z-index: 4; right: 12px; bottom: calc(16px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 8px; }
+  .fab { width: 46px; height: 46px; border: 0; border-radius: 14px; background: var(--card); color: var(--ink); font-size: 22px; box-shadow: var(--shadow); cursor: pointer; display: grid; place-items: center; }
+  #hud { position: absolute; z-index: 3; left: 12px; bottom: calc(16px + env(safe-area-inset-bottom)); background: rgba(255,255,255,.9); color: var(--muted); font-size: 13px; padding: 8px 12px; border-radius: 12px; box-shadow: 0 2px 10px rgba(31,78,140,.1); pointer-events: none; }
+  #hud b { color: var(--ink); font-weight: 600; }
+  #hud .num { font-family: var(--num); }
+  @media (prefers-reduced-motion: reduce) { #ddBtn svg { transition: none; } }
 </style>
 </head>
 <body>
 <div id="app">
-  <header>
-    <span id="dot" class="dot"></span>
-    <h1 id="title">Player Radar</h1>
-    <select id="dimSel"></select>
-    <button id="followBtn">Free</button>
-  </header>
-  <div id="stage">
-    <canvas id="cv"></canvas>
-    <div id="hud"></div>
-    <div id="zoomBtns"><button id="zi">+</button><button id="zo">−</button></div>
-  </div>
-  <div id="list"></div>
-</div>
-<script>
-const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
-const $ = id => document.getElementById(id);
-let players = [], online = false;
-let view = { cx: 0, cz: 0, scale: 2 };
-let follow = null, dim = "all", selected = null;
+  <canvas id="cv"></canvas>
 
+  <div id="top">
+    <div class="bar">
+      <span id="dot" class="dot"></span>
+      <span id="title">Player Radar</span>
+      <span id="age"></span>
+    </div>
+
+    <div id="dd">
+      <button id="ddBtn" aria-haspopup="listbox" aria-expanded="false">
+        <span>Nearby players</span><span id="count" class="count">0</span><span class="sp"></span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div id="panel" role="listbox"></div>
+    </div>
+
+    <div id="chips"></div>
+  </div>
+
+  <div id="hud"></div>
+  <div id="ctl">
+    <button class="fab" id="zi" aria-label="Zoom in">+</button>
+    <button class="fab" id="zo" aria-label="Zoom out">−</button>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const cv = $("cv"), ctx = cv.getContext("2d");
+let players = [], online = false, serverName = "Player Radar", updatedAt = 0, ageMs = 0;
+let view = { cx: 0, cz: 0, scale: 3 };
+let followName = null, dim = "all", userPanned = false;
+
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const PALETTE = ["#2f6fd6","#0f9d8a","#7a5cd6","#e07a3f","#d6527a","#3a9ad9","#5a9a2f","#c29a1a"];
+const colorFor = n => { let h = 0; for (const c of n) h = (h * 31 + c.charCodeAt(0)) >>> 0; return PALETTE[h % PALETTE.length]; };
+const visible = () => players.filter(p => dim === "all" || p.dim === dim);
+const centerPlayer = () => players.find(p => p.name === followName);
+
+/* ---------- canvas ---------- */
+function size() { const r = cv.getBoundingClientRect(); return [r.width, r.height]; }
 function resize() {
   const r = cv.getBoundingClientRect(), d = devicePixelRatio || 1;
-  cv.width = r.width * d; cv.height = r.height * d;
+  cv.width = Math.round(r.width * d); cv.height = Math.round(r.height * d);
   ctx.setTransform(d, 0, 0, d, 0, 0);
 }
 addEventListener("resize", resize); resize();
+const toScreen = (x, z) => { const [w, h] = size(); return [w/2 + (x - view.cx) * view.scale, h/2 + (z - view.cz) * view.scale]; };
 
-const W = () => cv.getBoundingClientRect().width, H = () => cv.getBoundingClientRect().height;
-const toScreen = (x, z) => [W()/2 + (x - view.cx) * view.scale, H()/2 + (z - view.cz) * view.scale];
-const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-
-function colorFor(name) {
-  let h = 0; for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 360;
-  return `hsl(${h} 90% 62%)`;
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
 }
-const visible = () => players.filter(p => dim === "all" || p.dim === dim);
 
 function draw() {
-  const w = W(), h = H();
+  const [w, h] = size();
   ctx.clearRect(0, 0, w, h);
-  ctx.fillStyle = "#0b1410"; ctx.fillRect(0, 0, w, h);
+  const bg = ctx.createLinearGradient(0, 0, 0, h);
+  bg.addColorStop(0, "#f7faff"); bg.addColorStop(1, "#e9f1fb");
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
 
+  // grid
   const steps = [10,25,50,100,250,500,1000,2500,5000,10000,50000];
-  const step = steps.find(s => s * view.scale >= 60) || 50000;
-  ctx.lineWidth = 1; ctx.font = "10px ui-monospace,monospace"; ctx.textBaseline = "alphabetic";
+  const step = steps.find(s => s * view.scale >= 70) || 50000;
   const x0 = view.cx - w/2/view.scale, x1 = view.cx + w/2/view.scale;
   const z0 = view.cz - h/2/view.scale, z1 = view.cz + h/2/view.scale;
+  ctx.lineWidth = 1; ctx.font = "11px " + getComputedStyle(document.body).getPropertyValue("--num");
   for (let x = Math.floor(x0/step)*step; x <= x1; x += step) {
-    const [sx] = toScreen(x, 0);
-    ctx.strokeStyle = x === 0 ? "#2f6b4a" : "#16291f";
+    const sx = toScreen(x, 0)[0];
+    ctx.strokeStyle = x === 0 ? "#b9cfee" : "#d9e5f5";
     ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, h); ctx.stroke();
-    ctx.fillStyle = "#3f6b55"; ctx.fillText(x, sx + 2, 10);
+    ctx.fillStyle = "#8aa2c0"; ctx.fillText(x, sx + 4, h - 70);
   }
   for (let z = Math.floor(z0/step)*step; z <= z1; z += step) {
-    const [, sy] = toScreen(0, z);
-    ctx.strokeStyle = z === 0 ? "#2f6b4a" : "#16291f";
+    const sy = toScreen(0, z)[1];
+    ctx.strokeStyle = z === 0 ? "#b9cfee" : "#d9e5f5";
     ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(w, sy); ctx.stroke();
-    ctx.fillStyle = "#3f6b55"; ctx.fillText(z, 2, sy - 2);
+    ctx.fillStyle = "#8aa2c0"; ctx.fillText(z, w - 44, sy - 4);
   }
 
-  ctx.strokeStyle = "#1f3a2c";
-  for (let i = 1; i <= 4; i++) {
-    ctx.beginPath(); ctx.arc(w/2, h/2, Math.min(w, h) / 2 * i / 4, 0, Math.PI * 2); ctx.stroke();
-  }
-  const t = performance.now() / 2500 * Math.PI * 2, R = Math.hypot(w, h) / 2;
-  if (ctx.createConicGradient) {
-    const g = ctx.createConicGradient(t, w/2, h/2);
-    g.addColorStop(0, "rgba(61,255,138,0.18)"); g.addColorStop(0.08, "rgba(61,255,138,0)"); g.addColorStop(1, "rgba(61,255,138,0)");
-    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(w/2, h/2, R, 0, Math.PI * 2); ctx.fill();
-  }
+  // radar rings around the centre
+  ctx.strokeStyle = "rgba(47,111,214,.16)"; ctx.fillStyle = "rgba(47,111,214,.05)";
+  const maxR = Math.min(w, h) * 0.42;
+  for (let i = 3; i >= 1; i--) { ctx.beginPath(); ctx.arc(w/2, h/2, maxR * i / 3, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); }
 
-  ctx.textBaseline = "middle";
-  for (const p of visible()) {
-    const [sx, sy] = toScreen(p.x, p.z), col = colorFor(p.name);
-    const yaw = (p.yaw + 180) * Math.PI / 180;
-    ctx.save(); ctx.translate(sx, sy); ctx.rotate(yaw);
-    ctx.fillStyle = col; ctx.strokeStyle = p.name === selected ? "#fff" : "#000"; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(0, -9); ctx.lineTo(6, 6); ctx.lineTo(0, 3); ctx.lineTo(-6, 6); ctx.closePath();
-    ctx.stroke(); ctx.fill(); ctx.restore();
+  // compass
+  ctx.fillStyle = "#7f98b8"; ctx.font = "700 12px " + getComputedStyle(document.body).getPropertyValue("--sans");
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText("N", w/2, h/2 - maxR - 14); ctx.fillText("S", w/2, h/2 + maxR + 14);
+  ctx.fillText("W", w/2 - maxR - 14, h/2); ctx.fillText("E", w/2 + maxR + 14, h/2);
 
-    ctx.font = "bold 12px system-ui,sans-serif";
+  // players
+  ctx.textAlign = "left";
+  const list = visible();
+  for (const p of list) {
+    const [sx, sy] = toScreen(p.x, p.z), col = colorFor(p.name), isC = p.name === followName;
+    // marker
+    ctx.save(); ctx.translate(sx, sy);
+    if (isC) { ctx.beginPath(); ctx.arc(0, 0, 17, 0, Math.PI * 2); ctx.fillStyle = "rgba(47,111,214,.15)"; ctx.fill(); }
+    ctx.rotate((p.yaw + 180) * Math.PI / 180);
+    ctx.beginPath(); ctx.moveTo(0, -11); ctx.lineTo(8, 8); ctx.lineTo(0, 4); ctx.lineTo(-8, 8); ctx.closePath();
+    ctx.fillStyle = col; ctx.strokeStyle = "#fff"; ctx.lineWidth = 2.5; ctx.stroke(); ctx.fill();
+    ctx.restore();
+
+    // label pill: name + coordinates
+    ctx.font = "700 13px " + getComputedStyle(document.body).getPropertyValue("--sans");
     const nw = ctx.measureText(p.name).width;
-    const coords = `  ${p.x}, ${p.y}, ${p.z}`;
-    ctx.font = "12px ui-monospace,monospace";
+    const coords = `${p.x}, ${p.y}, ${p.z}`;
+    ctx.font = "12px " + getComputedStyle(document.body).getPropertyValue("--num");
     const cw = ctx.measureText(coords).width;
-    ctx.fillStyle = "#000000b0"; ctx.fillRect(sx + 12, sy - 9, nw + cw + 8, 18);
-    ctx.fillStyle = "#cfeedd"; ctx.fillText(coords, sx + 16 + nw, sy);
-    ctx.font = "bold 12px system-ui,sans-serif"; ctx.fillStyle = col; ctx.fillText(p.name, sx + 16, sy);
+    const bw = Math.max(nw, cw) + 18, bh = 38, bx = sx + 16, by = sy - bh / 2;
+    ctx.save(); ctx.shadowColor = "rgba(31,78,140,.18)"; ctx.shadowBlur = 10; ctx.shadowOffsetY = 2;
+    ctx.fillStyle = "#fff"; roundRect(bx, by, bw, bh, 10); ctx.fill(); ctx.restore();
+    ctx.fillStyle = col; ctx.fillRect(bx, by + 8, 3, bh - 16);
+    ctx.textBaseline = "alphabetic";
+    ctx.font = "700 13px " + getComputedStyle(document.body).getPropertyValue("--sans");
+    ctx.fillStyle = "#17314d"; ctx.fillText(p.name, bx + 10, by + 16);
+    ctx.font = "12px " + getComputedStyle(document.body).getPropertyValue("--num");
+    ctx.fillStyle = "#6b84a0"; ctx.fillText(coords, bx + 10, by + 31);
+    ctx.textBaseline = "middle";
   }
-  $("hud").textContent = `${Math.round(view.cx)}, ${Math.round(view.cz)} · ${view.scale.toFixed(2)} px/block`;
+
+  // HUD
+  const c = centerPlayer();
+  $("hud").innerHTML = c
+    ? `Centered on <b>${esc(c.name)}</b>`
+    : `<span class="num">${Math.round(view.cx)}, ${Math.round(view.cz)}</span>`;
   requestAnimationFrame(draw);
 }
 
-function updateFollow() {
-  if (!follow) return;
-  const p = players.find(p => p.name === follow);
-  if (p) { view.cx = p.x; view.cz = p.z; }
+/* ---------- data + UI ---------- */
+function distFrom(p) {
+  const c = centerPlayer(); if (!c || c === p) return null;
+  return Math.round(Math.hypot(p.x - c.x, p.z - c.z));
 }
 
-function renderList() {
-  const list = visible();
-  $("list").innerHTML = list.length ? list.map(p =>
-    `<div class="row ${p.name === selected ? "sel" : ""}" data-n="${esc(p.name)}">
-       <span class="n" style="color:${colorFor(p.name)}">${esc(p.name)}</span>
-       <span class="c">${p.x}, ${p.y}, ${p.z} · ${esc(p.dim)}</span></div>`).join("")
-    : `<div class="empty">${online ? "No players online" : "Waiting for the Minecraft server…"}</div>`;
+function renderPanel() {
+  const list = visible().slice().sort((a, b) => (distFrom(a) ?? -1) - (distFrom(b) ?? -1));
+  $("count").textContent = list.length;
+  if (!list.length) {
+    $("panel").innerHTML = `<div class="empty"><b>${online ? "No players in range" : "Waiting for your game"}</b>${
+      online ? "Players appear here when they are close enough for your game to load them."
+             : "Join a world with the radar mod installed and your position will show up here."}</div>`;
+    return;
+  }
+  $("panel").innerHTML = list.map(p => {
+    const d = distFrom(p);
+    return `<button class="row ${p.name === followName ? "sel" : ""}" role="option" data-n="${esc(p.name)}">
+      <span class="av" style="background:${colorFor(p.name)}">${esc(p.name[0] || "?").toUpperCase()}</span>
+      <span class="who"><b>${esc(p.name)}</b><span>${p.x}, ${p.y}, ${p.z}</span></span>
+      <span class="far">${p.name === followName ? "centered" : d === null ? "" : d + " blocks"}</span>
+    </button>`;
+  }).join("");
 }
 
-function renderDims() {
-  const dims = ["all", ...new Set(players.map(p => p.dim))];
-  const sel = $("dimSel");
-  if (sel.dataset.k === dims.join()) return;
-  sel.dataset.k = dims.join();
-  sel.innerHTML = dims.map(d => `<option value="${esc(d)}" ${d === dim ? "selected" : ""}>${esc(d)}</option>`).join("");
+function renderChips() {
+  const dims = [...new Set(players.map(p => p.dim))];
+  const el = $("chips");
+  el.classList.toggle("show", dims.length > 1);
+  const key = dims.join() + "|" + dim;
+  if (el.dataset.k === key) return; el.dataset.k = key;
+  el.innerHTML = ["all", ...dims].map(d => `<button class="chip ${d === dim ? "on" : ""}" data-d="${esc(d)}">${esc(d)}</button>`).join("");
+}
+
+function focusOn(name) {
+  followName = name; userPanned = false;
+  const p = centerPlayer(); if (p) { view.cx = p.x; view.cz = p.z; }
+  renderPanel();
 }
 
 async function poll() {
@@ -152,39 +249,51 @@ async function poll() {
     const r = await fetch("/api/players", { cache: "no-store" });
     if (r.status === 401) { location.reload(); return; }
     const j = await r.json();
-    players = j.players; online = j.online;
-    $("title").textContent = j.server + (online ? ` · ${players.length} online` : " · offline");
+    players = j.players || []; online = !!j.online; serverName = j.server || "Player Radar"; ageMs = j.age || 0;
+    $("title").textContent = serverName;
     $("dot").classList.toggle("on", online);
-    renderDims(); updateFollow(); renderList();
-  } catch { $("dot").classList.remove("on"); }
+    $("age").textContent = online ? (ageMs < 3000 ? "Live" : Math.round(ageMs / 1000) + "s ago") : "Offline";
+
+    if (!followName || !centerPlayer()) {
+      const first = players[0]; if (first) { followName = first.name; userPanned = false; }
+    }
+    const c = centerPlayer();
+    if (c && !userPanned) { view.cx = c.x; view.cz = c.z; }
+    renderChips(); renderPanel();
+  } catch { $("dot").classList.remove("on"); $("age").textContent = "No connection"; }
 }
 setInterval(poll, 1000); poll();
 
-$("dimSel").onchange = e => { dim = e.target.value; renderList(); };
-$("list").onclick = e => {
-  const row = e.target.closest(".row"); if (!row) return;
-  selected = row.dataset.n; follow = selected;
-  $("followBtn").textContent = "Following: " + follow;
-  updateFollow(); renderList();
-};
-$("followBtn").onclick = () => { follow = null; $("followBtn").textContent = "Free"; };
-const zoom = f => { view.scale = Math.min(40, Math.max(0.02, view.scale * f)); };
-$("zi").onclick = () => zoom(1.5); $("zo").onclick = () => zoom(1/1.5);
-cv.addEventListener("wheel", e => { e.preventDefault(); zoom(e.deltaY < 0 ? 1.15 : 1/1.15); }, { passive: false });
+/* dropdown + chips + zoom */
+$("ddBtn").onclick = e => { e.stopPropagation(); const o = $("dd").classList.toggle("open"); $("ddBtn").setAttribute("aria-expanded", o); };
+document.addEventListener("click", e => { if (!$("dd").contains(e.target)) { $("dd").classList.remove("open"); $("ddBtn").setAttribute("aria-expanded", false); } });
+$("panel").onclick = e => { const row = e.target.closest(".row"); if (!row) return; focusOn(row.dataset.n); $("dd").classList.remove("open"); };
+$("chips").onclick = e => { const c = e.target.closest(".chip"); if (!c) return; dim = c.dataset.d; $("chips").dataset.k = ""; renderChips(); renderPanel(); };
+const zoom = f => { view.scale = Math.min(40, Math.max(0.03, view.scale * f)); };
+$("zi").onclick = () => zoom(1.5); $("zo").onclick = () => zoom(1 / 1.5);
+cv.addEventListener("wheel", e => { e.preventDefault(); zoom(e.deltaY < 0 ? 1.15 : 1 / 1.15); }, { passive: false });
 
-const ptrs = new Map(); let lastDist = 0;
-cv.addEventListener("pointerdown", e => { cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]); });
-cv.addEventListener("pointerup", e => { ptrs.delete(e.pointerId); lastDist = 0; });
+/* drag to pan, pinch to zoom, tap a marker to centre on it */
+const ptrs = new Map(); let lastDist = 0, moved = 0, downAt = null;
+cv.addEventListener("pointerdown", e => { cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]); moved = 0; downAt = [e.clientX, e.clientY]; });
+cv.addEventListener("pointerup", e => {
+  if (moved < 6 && ptrs.size === 1 && downAt) {
+    const r = cv.getBoundingClientRect(); let best = null, bd = 28;
+    for (const p of visible()) { const [sx, sy] = toScreen(p.x, p.z); const d = Math.hypot(sx - (e.clientX - r.left), sy - (e.clientY - r.top)); if (d < bd) { bd = d; best = p; } }
+    if (best) focusOn(best.name);
+  }
+  ptrs.delete(e.pointerId); lastDist = 0;
+});
 cv.addEventListener("pointercancel", e => { ptrs.delete(e.pointerId); lastDist = 0; });
 cv.addEventListener("pointermove", e => {
   if (!ptrs.has(e.pointerId)) return;
   const prev = ptrs.get(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]);
   if (ptrs.size === 1) {
-    follow = null; $("followBtn").textContent = "Free";
-    view.cx -= (e.clientX - prev[0]) / view.scale; view.cz -= (e.clientY - prev[1]) / view.scale;
+    moved += Math.abs(e.clientX - prev[0]) + Math.abs(e.clientY - prev[1]);
+    if (moved >= 6) { userPanned = true; view.cx -= (e.clientX - prev[0]) / view.scale; view.cz -= (e.clientY - prev[1]) / view.scale; }
   } else if (ptrs.size === 2) {
-    const [a, b] = [...ptrs.values()], d = Math.hypot(a[0]-b[0], a[1]-b[1]);
-    if (lastDist) zoom(d / lastDist); lastDist = d;
+    const [a, b] = [...ptrs.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+    if (lastDist) zoom(d / lastDist); lastDist = d; moved = 99;
   }
 });
 requestAnimationFrame(draw);
