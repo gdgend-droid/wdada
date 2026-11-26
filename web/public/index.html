@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0b1410">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Player Radar</title>
+<style>
+  :root { --bg:#0b1410; --panel:#12201a; --line:#1f3a2c; --green:#3dff8a; --dim:#7fae96; --warn:#ff5d5d; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { margin:0; height:100%; background:var(--bg); color:#d8ffe8; font:14px system-ui,sans-serif; overflow:hidden; }
+  #app { display:flex; flex-direction:column; height:100%; padding-top:env(safe-area-inset-top); padding-bottom:env(safe-area-inset-bottom); }
+  header { display:flex; align-items:center; gap:8px; padding:8px 12px; background:var(--panel); border-bottom:1px solid var(--line); }
+  header h1 { font-size:15px; margin:0; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .dot { width:10px; height:10px; border-radius:50%; background:var(--warn); }
+  .dot.on { background:var(--green); box-shadow:0 0 8px var(--green); }
+  select, button { background:#0e1a14; color:#d8ffe8; border:1px solid var(--line); border-radius:8px; padding:6px 8px; font-size:13px; }
+  #stage { position:relative; flex:1; min-height:0; }
+  canvas { position:absolute; inset:0; width:100%; height:100%; touch-action:none; }
+  #hud { position:absolute; left:8px; bottom:8px; font-size:12px; color:var(--dim); background:#0b1410cc; padding:4px 8px; border-radius:6px; pointer-events:none; }
+  #zoomBtns { position:absolute; right:8px; bottom:8px; display:flex; flex-direction:column; gap:6px; }
+  #zoomBtns button { width:40px; height:40px; font-size:20px; }
+  #list { max-height:34%; overflow:auto; background:var(--panel); border-top:1px solid var(--line); }
+  .row { display:flex; justify-content:space-between; gap:8px; padding:9px 12px; border-bottom:1px solid var(--line); }
+  .row.sel { background:#1a3326; }
+  .row .n { font-weight:600; }
+  .row .c { font-family:ui-monospace,monospace; color:var(--dim); }
+  .empty { padding:14px; color:var(--dim); text-align:center; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <span id="dot" class="dot"></span>
+    <h1 id="title">Player Radar</h1>
+    <select id="dimSel"></select>
+    <button id="followBtn">Free</button>
+  </header>
+  <div id="stage">
+    <canvas id="cv"></canvas>
+    <div id="hud"></div>
+    <div id="zoomBtns"><button id="zi">+</button><button id="zo">−</button></div>
+  </div>
+  <div id="list"></div>
+</div>
+<script>
+const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+const $ = id => document.getElementById(id);
+let players = [], online = false;
+let view = { cx: 0, cz: 0, scale: 2 };
+let follow = null, dim = "all", selected = null;
+
+function resize() {
+  const r = cv.getBoundingClientRect(), d = devicePixelRatio || 1;
+  cv.width = r.width * d; cv.height = r.height * d;
+  ctx.setTransform(d, 0, 0, d, 0, 0);
+}
+addEventListener("resize", resize); resize();
+
+const W = () => cv.getBoundingClientRect().width, H = () => cv.getBoundingClientRect().height;
+const toScreen = (x, z) => [W()/2 + (x - view.cx) * view.scale, H()/2 + (z - view.cz) * view.scale];
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function colorFor(name) {
+  let h = 0; for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 360;
+  return `hsl(${h} 90% 62%)`;
+}
+const visible = () => players.filter(p => dim === "all" || p.dim === dim);
+
+function draw() {
+  const w = W(), h = H();
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = "#0b1410"; ctx.fillRect(0, 0, w, h);
+
+  const steps = [10,25,50,100,250,500,1000,2500,5000,10000,50000];
+  const step = steps.find(s => s * view.scale >= 60) || 50000;
+  ctx.lineWidth = 1; ctx.font = "10px ui-monospace,monospace"; ctx.textBaseline = "alphabetic";
+  const x0 = view.cx - w/2/view.scale, x1 = view.cx + w/2/view.scale;
+  const z0 = view.cz - h/2/view.scale, z1 = view.cz + h/2/view.scale;
+  for (let x = Math.floor(x0/step)*step; x <= x1; x += step) {
+    const [sx] = toScreen(x, 0);
+    ctx.strokeStyle = x === 0 ? "#2f6b4a" : "#16291f";
+    ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, h); ctx.stroke();
+    ctx.fillStyle = "#3f6b55"; ctx.fillText(x, sx + 2, 10);
+  }
+  for (let z = Math.floor(z0/step)*step; z <= z1; z += step) {
+    const [, sy] = toScreen(0, z);
+    ctx.strokeStyle = z === 0 ? "#2f6b4a" : "#16291f";
+    ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(w, sy); ctx.stroke();
+    ctx.fillStyle = "#3f6b55"; ctx.fillText(z, 2, sy - 2);
+  }
+
+  ctx.strokeStyle = "#1f3a2c";
+  for (let i = 1; i <= 4; i++) {
+    ctx.beginPath(); ctx.arc(w/2, h/2, Math.min(w, h) / 2 * i / 4, 0, Math.PI * 2); ctx.stroke();
+  }
+  const t = performance.now() / 2500 * Math.PI * 2, R = Math.hypot(w, h) / 2;
+  if (ctx.createConicGradient) {
+    const g = ctx.createConicGradient(t, w/2, h/2);
+    g.addColorStop(0, "rgba(61,255,138,0.18)"); g.addColorStop(0.08, "rgba(61,255,138,0)"); g.addColorStop(1, "rgba(61,255,138,0)");
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(w/2, h/2, R, 0, Math.PI * 2); ctx.fill();
+  }
+
+  ctx.textBaseline = "middle";
+  for (const p of visible()) {
+    const [sx, sy] = toScreen(p.x, p.z), col = colorFor(p.name);
+    const yaw = (p.yaw + 180) * Math.PI / 180;
+    ctx.save(); ctx.translate(sx, sy); ctx.rotate(yaw);
+    ctx.fillStyle = col; ctx.strokeStyle = p.name === selected ? "#fff" : "#000"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, -9); ctx.lineTo(6, 6); ctx.lineTo(0, 3); ctx.lineTo(-6, 6); ctx.closePath();
+    ctx.stroke(); ctx.fill(); ctx.restore();
+
+    ctx.font = "bold 12px system-ui,sans-serif";
+    const nw = ctx.measureText(p.name).width;
+    const coords = `  ${p.x}, ${p.y}, ${p.z}`;
+    ctx.font = "12px ui-monospace,monospace";
+    const cw = ctx.measureText(coords).width;
+    ctx.fillStyle = "#000000b0"; ctx.fillRect(sx + 12, sy - 9, nw + cw + 8, 18);
+    ctx.fillStyle = "#cfeedd"; ctx.fillText(coords, sx + 16 + nw, sy);
+    ctx.font = "bold 12px system-ui,sans-serif"; ctx.fillStyle = col; ctx.fillText(p.name, sx + 16, sy);
+  }
+  $("hud").textContent = `${Math.round(view.cx)}, ${Math.round(view.cz)} · ${view.scale.toFixed(2)} px/block`;
+  requestAnimationFrame(draw);
+}
+
+function updateFollow() {
+  if (!follow) return;
+  const p = players.find(p => p.name === follow);
+  if (p) { view.cx = p.x; view.cz = p.z; }
+}
+
+function renderList() {
+  const list = visible();
+  $("list").innerHTML = list.length ? list.map(p =>
+    `<div class="row ${p.name === selected ? "sel" : ""}" data-n="${esc(p.name)}">
+       <span class="n" style="color:${colorFor(p.name)}">${esc(p.name)}</span>
+       <span class="c">${p.x}, ${p.y}, ${p.z} · ${esc(p.dim)}</span></div>`).join("")
+    : `<div class="empty">${online ? "No players online" : "Waiting for the Minecraft server…"}</div>`;
+}
+
+function renderDims() {
+  const dims = ["all", ...new Set(players.map(p => p.dim))];
+  const sel = $("dimSel");
+  if (sel.dataset.k === dims.join()) return;
+  sel.dataset.k = dims.join();
+  sel.innerHTML = dims.map(d => `<option value="${esc(d)}" ${d === dim ? "selected" : ""}>${esc(d)}</option>`).join("");
+}
+
+async function poll() {
+  try {
+    const r = await fetch("/api/players", { cache: "no-store" });
+    if (r.status === 401) { location.reload(); return; }
+    const j = await r.json();
+    players = j.players; online = j.online;
+    $("title").textContent = j.server + (online ? ` · ${players.length} online` : " · offline");
+    $("dot").classList.toggle("on", online);
+    renderDims(); updateFollow(); renderList();
+  } catch { $("dot").classList.remove("on"); }
+}
+setInterval(poll, 1000); poll();
+
+$("dimSel").onchange = e => { dim = e.target.value; renderList(); };
+$("list").onclick = e => {
+  const row = e.target.closest(".row"); if (!row) return;
+  selected = row.dataset.n; follow = selected;
+  $("followBtn").textContent = "Following: " + follow;
+  updateFollow(); renderList();
+};
+$("followBtn").onclick = () => { follow = null; $("followBtn").textContent = "Free"; };
+const zoom = f => { view.scale = Math.min(40, Math.max(0.02, view.scale * f)); };
+$("zi").onclick = () => zoom(1.5); $("zo").onclick = () => zoom(1/1.5);
+cv.addEventListener("wheel", e => { e.preventDefault(); zoom(e.deltaY < 0 ? 1.15 : 1/1.15); }, { passive: false });
+
+const ptrs = new Map(); let lastDist = 0;
+cv.addEventListener("pointerdown", e => { cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]); });
+cv.addEventListener("pointerup", e => { ptrs.delete(e.pointerId); lastDist = 0; });
+cv.addEventListener("pointercancel", e => { ptrs.delete(e.pointerId); lastDist = 0; });
+cv.addEventListener("pointermove", e => {
+  if (!ptrs.has(e.pointerId)) return;
+  const prev = ptrs.get(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]);
+  if (ptrs.size === 1) {
+    follow = null; $("followBtn").textContent = "Free";
+    view.cx -= (e.clientX - prev[0]) / view.scale; view.cz -= (e.clientY - prev[1]) / view.scale;
+  } else if (ptrs.size === 2) {
+    const [a, b] = [...ptrs.values()], d = Math.hypot(a[0]-b[0], a[1]-b[1]);
+    if (lastDist) zoom(d / lastDist); lastDist = d;
+  }
+});
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>
