@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: mc-radar
+    runtime: node
+    rootDir: web
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: RADAR_API_KEY
+        generateValue: true
+      - key: VIEW_PASSWORD
+        sync: false
